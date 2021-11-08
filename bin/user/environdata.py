@@ -18,10 +18,10 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see https://www.gnu.org/licenses/.
 
-Version: 0.1.0                                      Date: 6 November 2021
+Version: 0.1.0a1                                    Date: ? November 2021
 
 Revision History
-    6 November 2021         v0.1.0
+    ? November 2021         v0.1.0
         -   initial release
 
 To use this driver:
@@ -117,7 +117,7 @@ import telnetlib
 import time
 
 # Python 2/3 compatibility shims
-from six import iteritems
+import six
 from six.moves import StringIO
 
 # WeeWX imports
@@ -125,6 +125,7 @@ import weecfg
 import weewx
 import weeutil.weeutil
 import weewx.drivers
+import weewx.units
 
 # import/setup logging, WeeWX v3 is syslog based but WeeWX v4 is logging based,
 # try v4 logging and if it fails use v3 logging
@@ -186,11 +187,12 @@ except ImportError:
         log_traceback(prefix=prefix, loglevel=syslog.LOG_DEBUG)
 
 DRIVER_NAME = 'environdata'
-DRIVER_VERSION = '0.1.0'
+DRIVER_VERSION = '0.1.0a1'
 
 DEFAULT_PORT = 10001
 DEFAULT_POLL_INTERVAL = 20
 DEFAULT_MAX_RETRIES = 3
+DEFAULT_PACKET_TYPE = 'r1'
 
 
 # ============================================================================
@@ -237,16 +239,16 @@ class EnvirondataConfEditor(weewx.drivers.AbstractConfEditor):
     [Environdata]
         # This section is for the Environdata driver.
 
-        # The driver to use
+        # the driver to use
         driver = user.environdata
 
         # station IP address
         ip_address = w.x.y.z        
 
         # station telnet port
-        ip_address = %d        
+        port = %d        
 
-        # How often to poll the station
+        # how often to poll the station
         poll_interval = %d
     """ % (DEFAULT_PORT, DEFAULT_POLL_INTERVAL)
 
@@ -291,7 +293,8 @@ class EnvirondataConfEditor(weewx.drivers.AbstractConfEditor):
                 'poll_interval': poll_interval
                 }
 
-    def modify_config(self, config_dict):
+    @staticmethod
+    def modify_config(config_dict):
 
         import weecfg
 
@@ -340,6 +343,8 @@ attempt startup indefinitely."""
 class EnvirondataDriver(weewx.drivers.AbstractDevice):
     """Driver for the Environdata Weather Mate 3000."""
 
+    parser_map = {'r1': 'parse_r1_data'}
+
     r1_field_map = {'avg_windSpeed': 'WS',
                     'avg_windDir': 'WD',
                     'outHumidity': 'RH',
@@ -356,17 +361,21 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                     'comms': 'Co'
                     }
 
+    r1_conversion_map = {'LC': 'ma_to_a',
+                         'CC': 'ma_to_a',
+                         'RS': 'mm_to_cm'
+                         }
+    prompt = b'>'
+    cmd_terminator = '\r'
+
     def __init__(self, **stn_dict):
         """Initialise an Environdata driver object."""
-
-        # now initialize my superclasses
-        super(EnvirondataDriver, self).__init__(**stn_dict)
 
         # log our version number
         loginf('driver version is %s' % DRIVER_VERSION)
 
         # obtain the IP address to use
-        self.ip_address = stn_dict.get('ip_address', "192.168.1.73")
+        self.ip_address = stn_dict.get('ip_address')
         # obtain the port number to use
         self.port = weeutil.weeutil.to_int(stn_dict.get('port', DEFAULT_PORT))
         # obtain the poll interval to use
@@ -374,13 +383,17 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                                                                  DEFAULT_POLL_INTERVAL))
         # obtain the number of retries to use when contacting the station
         # before giving up
-        self.retries = weeutil.weeutil.to_int(stn_dict.get('max_retries',
-                                                           DEFAULT_MAX_RETRIES))
+        self.max_retries = weeutil.weeutil.to_int(stn_dict.get('max_retries',
+                                                               DEFAULT_MAX_RETRIES))
+        # which data packet type are we obtaining from the station
+        self.packet_type = stn_dict.get('packet_type', DEFAULT_PACKET_TYPE)
+
         # now log some of our settings
-        loginf("IP address is %s:%d" % (self.ip_address,
+        loginf('IP address is %s:%d' % (self.ip_address,
                                         self.port))
-        loginf("poll interval is %d seconds" % self.poll_interval)
-        logdbg('max retries is %d' % (self.max_tries, ))
+        loginf('poll interval is %d seconds' % self.poll_interval)
+        logdbg('max retries is %d' % (self.max_retries, ))
+        loginf("packet type '%s' will be used" % self.packet_type)
 
     @property
     def hardware_name(self):
@@ -405,14 +418,26 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             # get raw data from the station
             raw_data = self.read_data()
             if weewx.debug >= 2:
-                loginf("raw_data=%s" % (raw_data,))
+                loginf("raw data=%s" % (raw_data,))
             # parse the raw data
-            parsed_data = self.parse_data(raw_data)
-            if weewx.debug >= 2:
-                loginf("parsed_data=%s" % (parsed_data,))
-            # if we have parsed data use it up update our empty packet
-            if parsed_data is not None:
-                packet.update(parsed_data)
+            # first get the parser method to use
+            parser_fn = EnvirondataDriver.parser_map.get(self.packet_type)
+            if parser_fn is not None:
+                parsed_data = getattr(self, parser_fn)(raw_data)
+            else:
+                parsed_data = None
+            if weewx.debug >= 3:
+                loginf("parsed data=%s" % (parsed_data,))
+            # Some Environdata parsed raw data fields need unit conversion so
+            # the resulting loop packet will meet WeeWX unit system
+            # requirements. Since this is a driver we are free to choose the
+            # unit system to be used, in this case we have chosen Metric.
+            converted_data = self.convert_data(parsed_data)
+            if weewx.debug >= 3:
+                loginf("converted data=%s" % (parsed_data,))
+            # if we have converted data use it up update our empty packet
+            if converted_data is not None:
+                packet.update(converted_data)
             if weewx.debug >= 2:
                 loginf("packet=%s" % (packet,))
             # yield the packet
@@ -424,85 +449,144 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         """Read raw data from the station"""
 
         with telnetlib.Telnet(self.ip_address, self.port) as tn:
-            tn.read_until(">", timeout=5)
+            tn.read_until(EnvirondataDriver.prompt, timeout=5)
             # ask for r1 data
-            tn.write("r1\r")
+            tn.write(six.ensure_binary(''.join([self.packet_type,
+                                                EnvirondataDriver.cmd_terminator])))
             # read the response
-            raw_data = tn.read_until(">", timeout=10)
-            # ?
-            tn.write("^] \r")
-            tn.write("quit \r")
+            raw_data = tn.read_until(EnvirondataDriver.prompt, timeout=10)
         # return the raw data
         return raw_data
 
-    def parse_data(self, raw_data):
+    def parse_r1_data(self, raw_data):
         """Parse raw data from the station.
 
-        Our raw data will contain at least three lines similar to:
+        Our raw data will contain at least four lines similar to:
+        r1
         WS=   ,WD=   ,RH=   ,AT=   ,BP=   ,BV=   ,LC=   ,SV=   ,CC=   ,PW=   ,IW=   ,IW=   ,RS=   ,Co=
         +000005.15,+000112.24,+000060.67,+000022.80,+001015.22,+000012.47,+000042.55,+000013.02,+000203.09,+000007.00,+000005.00,+000133.33,+000000.00,+000001.00
         km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Degs  ,mm    ,Mins
 
-        The first line consists of comma separated abbreviated field/sensor names.
-        The second line consists of comma separated observation values.
-        The third line consists of comma separated unit abbreviations.
+        The first line contains the command code used to obtain the data
+        The second line consists of comma separated abbreviated field/sensor names.
+        The third line consists of comma separated observation values.
+        The fourth line consists of comma separated unit abbreviations.
         """
 
-        # our data is spread over three lines, so split it into individual lines
-        lines = raw_data.splitlines()
-        # do we have three or more lines
-        if len(lines) >= 3:
-            #  we have three or more lines, so we might have some data to work
-            #  with
-            # create an empty dict to hold our results
-            result = {}
-            # field names/codes are in the first line, obtain a raw list of
-            # fields by splitting on the comma
-            _fields = lines[0].split(',')
-            # tidy up our field/code names by stripping off any spaces and the
-            # equal sign
-            fields = [f.strip('= ') for f in _fields]
-            # data is in the second line, obtain a list of data points by
-            # splitting on the comma
-            data = lines[1].split(',')
-            # units are on the third line, obtain a list of units by splitting
-            # on the comma
-            _units = lines[2].split(',')
-            # tidy up our unit codes by stripping off any spaces
-            units = [u.strip() for u in _units]
-            # now zip our three lists together, this will give us a list of
-            # three way tuples of the format (field code, data, unit code)
-            data_list = list(zip(fields, data, units))
-            # now iterate over our data list, extracting data and mapping as
-            # per our field map
-            for element in data_list:
-                # get the WeeWX field name as per the r1 field map
-                w_field = self.get_w_field(element)
-                # do we have a WeeWX field name
-                if w_field is not None:
-                    # we have a WeeWX field name, convert our data (it is a
-                    # string) to a float but wrap in a try..except in case we
-                    # strike an exception
-                    try:
-                        result[w_field] = float(element[1])
-                    except (ValueError, TypeError):
-                        # Could not convert to a float, most likely because the
-                        # data was corrupted. Skip this data point.
-                        continue
-            # return our dict of parsed data
-            return result
+        # do we have any data
+        if raw_data is not None:
+            # our data of interest is spread over lines two to four, so split it into individual lines
+            lines = raw_data.splitlines()
+            # do we have four or more lines
+            if len(lines) >= 4:
+                #  we have four or more lines, so we might have some data to work
+                #  with
+                # create an empty dict to hold our results
+                result = {}
+                # field names/codes are in the second line, obtain a raw list of
+                # fields by splitting on the comma
+                _fields = lines[1].split(',')
+                # tidy up our field/code names by stripping off any spaces and the
+                # equal sign
+                fields = [f.strip('= ') for f in _fields]
+                # data is in the third line, obtain a list of data points by
+                # splitting on the comma
+                data = lines[2].split(',')
+                # units are on the fourth line, obtain a list of units by splitting
+                # on the comma
+                _units = lines[3].split(',')
+                # tidy up our unit codes by stripping off any spaces
+                units = [u.strip() for u in _units]
+                # now zip our three lists together, this will give us a list of
+                # three way tuples of the format (field code, data, unit code)
+                data_list = list(zip(fields, data, units))
+                # now iterate over our data list, extracting data and mapping as
+                # per our field map
+                for element in data_list:
+                    # get the WeeWX field name as per the r1 field map
+                    w_field = self.get_w_field(element)
+                    # do we have a WeeWX field name
+                    if w_field is not None:
+                        # we have a WeeWX field name, convert our data (it is a
+                        # string) to a float but wrap in a try..except in case we
+                        # strike an exception
+                        try:
+                            result[w_field] = float(element[1])
+                        except (ValueError, TypeError):
+                            # Could not convert to a float, most likely because the
+                            # data was corrupted. Skip this data point.
+                            continue
+                # return our dict of parsed data
+                return result
+            else:
+                # we cannot parse this data so return None
+                return None
         else:
-            # we cannot parse this data so return None
+            # we have no data so return None
             return None
+
+    def convert_data(self, parsed_data):
+        """Take a packet of parsed data and convert to Metric units.
+
+        Most Environdata Weather Mate 3000 obs are already in WeeWX Metric
+        units. The exceptions are:
+
+        load current (LC) which is in mA (needs to be Amp)
+        charge current (CC) which is in mA (needs to be Amp)
+        rain since 9am (RS) which is in mm (needs to be cm)
+
+        Look for each of these fields in the parsed data packet and adjust the
+        values as necessary. Whilst the parsed data is based on WeeWX field
+        names we need to look for Environdata source fields as the user may be
+        using a custom field map.
+        """
+
+        if parsed_data is not None:
+            # make a copy of the source data as we will likely be changing it
+            converted_data = dict(parsed_data)
+            # iterate over the fields in ur parsed data
+            for w_field, value in six.iteritems(parsed_data):
+                # get the conversion function for the associated field
+                conv_fn = EnvirondataDriver.r1_conversion_map.get(EnvirondataDriver.r1_field_map[w_field])
+                # if we have a conversion function update our converted data
+                if conv_fn is not None:
+                    converted_data[w_field] = getattr(self, conv_fn)(value)
+        else:
+            converted_data = None
+        # return the converted data
+        return converted_data
 
     @staticmethod
     def get_w_field(element):
         """Given an Environdata obs name return a WeeWX field name."""
 
-        for key, value in iteritems(EnvirondataDriver.r1_field_map):
+        for key, value in six.iteritems(EnvirondataDriver.r1_field_map):
             if element[0] == value:
                 return key
         return None
+
+    @staticmethod
+    def ma_to_a(value):
+        """Convert a value in mA to A handling None."""
+
+        try:
+            return value/1000
+        except TypeError:
+            return None
+
+    @staticmethod
+    def mm_to_cm(value):
+        """Convert a value in mm to cm handling None.
+
+        A trivial case but for consistency use the WeeWX unit conversion
+        functions. Return None if an error is encountered.
+        """
+
+        try:
+            conversion_fn = weewx.units.conversionDict['mm']['cm']
+            return conversion_fn(value)
+        except (TypeError, KeyError):
+            return None
 
 
 # ============================================================================
@@ -532,7 +616,7 @@ def ip_from_config_opts(opts, stn_dict):
         else:
             if weewx.debug >= 1:
                 print()
-                print("IP address to be obtained by discovery")
+                print("Could not obtain an IP address")
     else:
         if weewx.debug >= 1:
             print()
