@@ -18,7 +18,7 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see https://www.gnu.org/licenses/.
 
-Version: 0.1.0a1                                    Date: ? November 2021
+Version: 0.1.0a3                                    Date: ? November 2021
 
 Revision History
     ? November 2021         v0.1.0
@@ -186,8 +186,8 @@ except ImportError:
     def log_traceback_debug(prefix=''):
         log_traceback(prefix=prefix, loglevel=syslog.LOG_DEBUG)
 
-DRIVER_NAME = 'environdata'
-DRIVER_VERSION = '0.1.0a1'
+DRIVER_NAME = 'Environdata'
+DRIVER_VERSION = '0.1.0a3'
 
 DEFAULT_PORT = 10001
 DEFAULT_POLL_INTERVAL = 20
@@ -454,7 +454,7 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             tn.write(six.ensure_binary(''.join([self.packet_type,
                                                 EnvirondataDriver.cmd_terminator])))
             # read the response
-            raw_data = tn.read_until(EnvirondataDriver.prompt, timeout=10)
+            raw_data = tn.read_until(EnvirondataDriver.prompt, timeout=10).decode('ascii')
         # return the raw data
         return raw_data
 
