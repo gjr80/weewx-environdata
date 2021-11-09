@@ -622,13 +622,21 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
     def map_data(self, parsed_data):
         """Map parsed data to WeeWX field names."""
 
+        # do we have any data to map
         if parsed_data is not None:
+            # create a dict to hold our result
             result = {}
+            # iterate over all entries in the field map
             for w_field, e_field in six.iteritems(self.field_map):
+                # do we have the mapped field in our source data
                 if e_field in parsed_data:
+                    # we have the mapped field so add the data to our result
+                    # but using the WeeWX field name
                     result[w_field] = parsed_data[e_field]
+            # return our result
             return result
         else:
+            # we have no data so return None
             return None
 
     @staticmethod
