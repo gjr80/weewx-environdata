@@ -18,7 +18,7 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see https://www.gnu.org/licenses/.
 
-Version: 0.1.0a3                                    Date: ? November 2021
+Version: 0.1.0a4                                    Date: ? November 2021
 
 Revision History
     ? November 2021         v0.1.0
@@ -345,26 +345,94 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
 
     parser_map = {'r1': 'parse_r1_data'}
 
-    r1_field_map = {'avg_windSpeed': 'WS',
-                    'avg_windDir': 'WD',
-                    'outHumidity': 'RH',
-                    'outTemp': 'AT',
-                    'barometer': 'BP',
-                    'batteryStatus1': 'BV',
-                    'load_current': 'LC',
-                    'solar_voltage': 'SV',
-                    'charge_current': 'CC',
-                    'windGust': 'PW',
-                    'windSpeed': 'IW',
-                    'windDir': 'IW',
-                    'rain_9am': 'RS',
-                    'comms': 'Co'
-                    }
-
-    r1_conversion_map = {'LC': 'ma_to_a',
-                         'CC': 'ma_to_a',
-                         'RS': 'mm_to_cm'
+    r1_map = {
+        'wind_speed': {'field': 'WS',
+                       'group': 'group_speed',
+                       'unit': 'km_per_hour',
+                       'conv_fn': lambda x: x
+                       },
+        'wind_direction': {'field': 'WD',
+                           'group': 'group_direction',
+                           'unit': 'degree_compass',
+                           'conv_fn': lambda x: x
+                           },
+        'relative_humidity': {'field': 'RH',
+                              'group': 'group_percent',
+                              'unit': 'percent',
+                              'conv_fn': lambda x: x
+                              },
+        'air_temperature': {'field': 'AT',
+                            'group': 'group_temperature',
+                            'unit': 'degree_C',
+                            'conv_fn': lambda x: x
+                            },
+        'barometric_pressure': {'field': 'BP',
+                                'group': 'group_pressure',
+                                'unit': 'hPa',
+                                'conv_fn': lambda x: x
+                                },
+        'battery_voltage': {'field': 'BV',
+                            'group': 'group_volt',
+                            'unit': 'volt',
+                            'conv_fn': lambda x: x
+                            },
+        'load_current': {'field': 'LC',
+                         'group': 'group_amp',
+                         'unit': 'amp',
+                         'conv_fn': lambda x: x/1000
+                         },
+        'solar_voltage': {'field': 'SV',
+                          'group': 'group_volt',
+                          'unit': 'volt',
+                          'conv_fn': lambda x: x
+                          },
+        'charge_current': {'field': 'CC',
+                           'group': 'group_amp',
+                           'unit': 'amp',
+                           'conv_fn': lambda x: x/1000
+                           },
+        'peak_wind_gust': {'field': 'PW',
+                           'group': 'group_speed',
+                           'unit': 'km_per_hour',
+                           'conv_fn': lambda x: x
+                           },
+        'instantaneous_wind_speed': {'field': 'IW',
+                                     'group': 'group_speed',
+                                     'unit': 'km_per_hour',
+                                     'conv_fn': lambda x: x
+                                     },
+        'instantaneous_wind_direction': {'field': 'IW',
+                                         'group': 'group_direction',
+                                         'unit': 'degree_compass',
+                                         'conv_fn': lambda x: x
+                                         },
+        'rain_since_9am': {'field': 'RS',
+                           'group': 'group_rain',
+                           'unit': 'mm',
+                           'conv_fn': lambda x: x
+                           },
+        'communications': {'field': 'Co',
+                           'group': 'group_elapsed',
+                           'unit': 'minute',
+                           'conv_fn': lambda x: x
+                           }
+    }
+    default_field_map = {'avg_wind_speed': 'wind_speed',
+                         'avg_wind_direction': 'wind_direction',
+                         'outHumidity': 'relative_humidity',
+                         'outTemp': 'air_temperature',
+                         'barometer': 'barometric_pressure',
+                         'batteryStatus1': 'battery_voltage',
+                         'load_current': 'load_current',
+                         'solar_voltage': 'solar_voltage',
+                         'charge_current': 'charge_current',
+                         'windGust': 'peak_wind_gust',
+                         'windSpeed': 'instantaneous_wind_speed',
+                         'windDir': 'instantaneous_wind_direction',
+                         'rain_9am': 'rain_since_9am',
+                         'communications': 'communications'
                          }
+
     prompt = b'>'
     cmd_terminator = '\r'
 
@@ -387,6 +455,9 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                                                                DEFAULT_MAX_RETRIES))
         # which data packet type are we obtaining from the station
         self.packet_type = stn_dict.get('packet_type', DEFAULT_PACKET_TYPE)
+
+        # get the WeeWX field map to use
+        self.field_map = EnvirondataDriver.default_field_map
 
         # now log some of our settings
         loginf('IP address is %s:%d' % (self.ip_address,
@@ -435,9 +506,12 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             converted_data = self.convert_data(parsed_data)
             if weewx.debug >= 3:
                 loginf("converted data=%s" % (parsed_data,))
+            mapped_data = self.map_data(converted_data)
+            if weewx.debug >= 3:
+                loginf("mapped data=%s" % (mapped_data,))
             # if we have converted data use it up update our empty packet
-            if converted_data is not None:
-                packet.update(converted_data)
+            if mapped_data is not None:
+                packet.update(mapped_data)
             if weewx.debug >= 2:
                 loginf("packet=%s" % (packet,))
             # yield the packet
@@ -471,6 +545,10 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         The second line consists of comma separated abbreviated field/sensor names.
         The third line consists of comma separated observation values.
         The fourth line consists of comma separated unit abbreviations.
+
+        First the data is parsed and the field names, values and units are
+        extracted. This data is then mapped to a dict keyed by self evident
+        Environdata field names. Each ???
         """
 
         # do we have any data
@@ -503,19 +581,23 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                 # now iterate over our data list, extracting data and mapping as
                 # per our field map
                 for element in data_list:
-                    # get the WeeWX field name as per the r1 field map
-                    w_field = self.get_w_field(element)
-                    # do we have a WeeWX field name
-                    if w_field is not None:
-                        # we have a WeeWX field name, convert our data (it is a
-                        # string) to a float but wrap in a try..except in case we
-                        # strike an exception
+                    # get the Environdata field name from the r1 map
+                    e_field = self.get_r1_e_field(element)
+                    # do we have a field name
+                    if e_field is not None:
+                        # we have an Environdata field name, convert our data
+                        # (it is a string) to a float but wrap in a try..except
+                        # in case we strike an exception
                         try:
-                            result[w_field] = float(element[1])
+                            val = float(element[1])
                         except (ValueError, TypeError):
-                            # Could not convert to a float, most likely because the
-                            # data was corrupted. Skip this data point.
+                            # Could not convert to a float, most likely because
+                            # the data was corrupted. Skip this data point.
                             continue
+                        else:
+                            # we have a float, now apply the applicable
+                            # conversion function from the r1 map
+                            result[e_field] = EnvirondataDriver.r1_map[e_field].get('conv_fn', lambda x: x)(val)
                 # return our dict of parsed data
                 return result
             else:
@@ -525,7 +607,20 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             # we have no data so return None
             return None
 
-    def convert_data(self, parsed_data):
+    def map_data(self, parsed_data):
+        """Map parsed data to WeeWX field names."""
+
+        if parsed_data is not None:
+            result = {}
+            for w_field, e_field in six.iteritems(self.field_map):
+                if e_field in parsed_data:
+                    result[w_field] = parsed_data[e_field]
+            return result
+        else:
+            return None
+
+    @staticmethod
+    def convert_data(parsed_data):
         """Take a packet of parsed data and convert to Metric units.
 
         Most Environdata Weather Mate 3000 obs are already in WeeWX Metric
@@ -542,51 +637,54 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         """
 
         if parsed_data is not None:
-            # make a copy of the source data as we will likely be changing it
-            converted_data = dict(parsed_data)
-            # iterate over the fields in ur parsed data
-            for w_field, value in six.iteritems(parsed_data):
-                # get the conversion function for the associated field
-                conv_fn = EnvirondataDriver.r1_conversion_map.get(EnvirondataDriver.r1_field_map[w_field])
-                # if we have a conversion function update our converted data
-                if conv_fn is not None:
-                    converted_data[w_field] = getattr(self, conv_fn)(value)
+            converter = weewx.units.Converter(weewx.units.MetricUnits)
+            result = {}
+            for e_field, value in six.iteritems(parsed_data):
+                vt = weewx.units.ValueTuple(value,
+                                            EnvirondataDriver.r1_map[e_field]['unit'],
+                                            EnvirondataDriver.r1_map[e_field]['group'])
+                result[e_field] = converter.convert(vt).value
+            return result
         else:
-            converted_data = None
-        # return the converted data
-        return converted_data
-
-    @staticmethod
-    def get_w_field(element):
-        """Given an Environdata obs name return a WeeWX field name."""
-
-        for key, value in six.iteritems(EnvirondataDriver.r1_field_map):
-            if element[0] == value:
-                return key
-        return None
-
-    @staticmethod
-    def ma_to_a(value):
-        """Convert a value in mA to A handling None."""
-
-        try:
-            return value/1000
-        except TypeError:
             return None
 
     @staticmethod
-    def mm_to_cm(value):
-        """Convert a value in mm to cm handling None.
+    def get_r1_e_field(element):
+        """Given an Environdata r1 field name obtain the Environdata field name.
 
-        A trivial case but for consistency use the WeeWX unit conversion
-        functions. Return None if an error is encountered.
+        element: A three way tuple of strings in the
+                 format (r1 field name, data, units)
         """
 
-        try:
-            conversion_fn = weewx.units.conversionDict['mm']['cm']
-            return conversion_fn(value)
-        except (TypeError, KeyError):
-            return None
+        # iterate over the key, value pairs in the r1 map until we have a
+        # match. Remember our 'value' is a dict.
+        for key, value in six.iteritems(EnvirondataDriver.r1_map):
+            # do we have a match for the element r1 field name
+            if element[0] == value['field']:
+                # we have a match, but the r1 packet includes two ambiguous
+                # field names; 'IW' could be instantaneous wind speed or
+                # instantaneous wind direction. To make sure we have the right
+                # one we need to check the units.
+                if value['field'] == 'IW':
+                    # We have an ambiguous field name. Check to see which r1
+                    # field we have based on the units and see if our mapped
+                    # field has corresponding units. If they do then we have
+                    # the right field, if they don't we have the wrong field
+                    # and we should continue through the map. Wrap in a
+                    # try..except in case element[2] is not a string.
+                    try:
+                        if 'degs' in element[2].lower() and value['unit'] == 'degree_compass' or \
+                                'km' in element[2].lower() and value['unit'] == 'km_per_hour':
+                            return key
+                        else:
+                            continue
+                    except AttributeError:
+                        # likely element[2] is not a string
+                        continue
+                else:
+                    # any other field is not ambiguous so return the key
+                    return key
+        return None
 
 
 # ============================================================================
