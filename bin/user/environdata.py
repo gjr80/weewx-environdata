@@ -479,7 +479,18 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         pass
 
     def genLoopPackets(self):
-        """Generate loop like packets of data."""
+        """Generate loop like packets of data.
+
+        Steps to generate a loop packet:
+
+        1. read the raw data from the station
+        2. parse the raw data
+        3. convert the parsed data to WeeWX Metric units
+        4. map the converted data to WeeWX loop packet fields
+        5. construct the loop packet
+        6. yield the loop packet
+        7. sleep until the next loop packet is due
+        """
 
         while True:
             # create a loop packet dict and initialise with dateTime and
@@ -548,7 +559,8 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
 
         First the data is parsed and the field names, values and units are
         extracted. This data is then mapped to a dict keyed by self evident
-        Environdata field names. Each ???
+        Environdata field names. Fields using units not supportd by WeeWX are
+        converted to a supported unit.
         """
 
         # do we have any data
