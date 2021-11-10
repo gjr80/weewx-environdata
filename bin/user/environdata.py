@@ -559,7 +559,7 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
 
         First the data is parsed and the field names, values and units are
         extracted. This data is then mapped to a dict keyed by self evident
-        Environdata field names. Fields using units not supportd by WeeWX are
+        Environdata field names. Fields using units not supported by WeeWX are
         converted to a supported unit.
         """
 
@@ -619,28 +619,8 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             # we have no data so return None
             return None
 
-    def map_data(self, parsed_data):
-        """Map parsed data to WeeWX field names."""
-
-        # do we have any data to map
-        if parsed_data is not None:
-            # create a dict to hold our result
-            result = {}
-            # iterate over all entries in the field map
-            for w_field, e_field in six.iteritems(self.field_map):
-                # do we have the mapped field in our source data
-                if e_field in parsed_data:
-                    # we have the mapped field so add the data to our result
-                    # but using the WeeWX field name
-                    result[w_field] = parsed_data[e_field]
-            # return our result
-            return result
-        else:
-            # we have no data so return None
-            return None
-
     @staticmethod
-    def convert_data(parsed_data):
+    def convert_data(source_data):
         """Take a packet of parsed data and convert to Metric units.
 
         Most Environdata Weather Mate 3000 obs are already in WeeWX Metric
@@ -656,10 +636,10 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         using a custom field map.
         """
 
-        if parsed_data is not None:
+        if source_data is not None:
             converter = weewx.units.Converter(weewx.units.MetricUnits)
             result = {}
-            for e_field, value in six.iteritems(parsed_data):
+            for e_field, value in six.iteritems(source_data):
                 vt = weewx.units.ValueTuple(value,
                                             EnvirondataDriver.r1_map[e_field]['unit'],
                                             EnvirondataDriver.r1_map[e_field]['group'])
@@ -668,9 +648,29 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
         else:
             return None
 
+    def map_data(self, source_data):
+        """Map source data to WeeWX field names."""
+
+        # do we have any data to map
+        if source_data is not None:
+            # create a dict to hold our result
+            result = {}
+            # iterate over all entries in the field map
+            for w_field, e_field in six.iteritems(self.field_map):
+                # do we have the mapped field in our source data
+                if e_field in source_data:
+                    # we have the mapped field so add the data to our result
+                    # but using the WeeWX field name
+                    result[w_field] = source_data[e_field]
+            # return our result
+            return result
+        else:
+            # we have no data so return None
+            return None
+
     @staticmethod
     def get_r1_e_field(element):
-        """Given an Environdata r1 field name obtain the Environdata field name.
+        """Given an r1 field name obtain the Environdata field name.
 
         element: A three way tuple of strings in the
                  format (r1 field name, data, units)
