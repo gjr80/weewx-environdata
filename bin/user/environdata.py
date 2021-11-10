@@ -187,7 +187,7 @@ except ImportError:
         log_traceback(prefix=prefix, loglevel=syslog.LOG_DEBUG)
 
 DRIVER_NAME = 'Environdata'
-DRIVER_VERSION = '0.1.0a3'
+DRIVER_VERSION = '0.1.0a4'
 
 DEFAULT_PORT = 10001
 DEFAULT_POLL_INTERVAL = 20
