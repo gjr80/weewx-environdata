@@ -52,6 +52,11 @@ WS=   ,WD=   ,RH=   ,AT=   ,BP=   ,BV=   ,LC=   ,SV=   ,CC=   ,PW=   ,IW=   ,IW=
 +000002.20,+000111.21,+000068.49,+000014.30,+001004.02,+000012.55,+000041.88,+000008.23,+000000.00,+000003.00,+000002.00,+000045.32,+000012.20,+000001.00
 km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Degs  ,mm    ,Mins
 >"""
+    corrupt_raw_r1_data = """r1
+WS=   ,WD=   ,RH=   ,AT=   ,BP=   ,BV=   ,LC=   ,SV=   ,CC=   ,PW=   ,IW=   ,IW=   ,RS=   ,Co=
++000002.20,+0001zz.21,+000068.49,+000.014.30,+001004.02,+000012.55,+000041.88,+000008.23,+000000.00,+000003.00,+000002.00,+000045.32,+000012.20,+000001.00
+km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Degs  ,mm    ,Mins
+>"""
     parsed_r1_data = {'wind_direction': 111.21,
                       'wind_speed': 2.2,
                       'barometric_pressure': 1004.02,
@@ -67,6 +72,19 @@ km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Deg
                       'instantaneous_wind_speed': 2.0,
                       'instantaneous_wind_direction': 45.32
                       }
+    parsed_corrupt_r1_data = {'wind_speed': 2.2,
+                              'barometric_pressure': 1004.02,
+                              'battery_voltage': 12.55,
+                              'charge_current': 0.0,
+                              'communications': 1.0,
+                              'load_current': 0.04188,
+                              'relative_humidity': 68.49,
+                              'rain_since_9am': 12.2,
+                              'solar_voltage': 8.23,
+                              'peak_wind_gust': 3.0,
+                              'instantaneous_wind_speed': 2.0,
+                              'instantaneous_wind_direction': 45.32
+                              }
     converted_r1_data = {'wind_direction': 111.21,
                          'wind_speed': 2.2,
                          'barometric_pressure': 1004.02,
@@ -115,10 +133,11 @@ km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Deg
                              self.parsed_r1_data)
 
         # test a corrupted response
-        pass
+        self.assertDictEqual(self.driver.parse_r1_data(self.corrupt_raw_r1_data),
+                             self.parsed_corrupt_r1_data)
 
         # test a None response
-        self.assertEqual(self.driver.parse_r1_data(None), None)
+        self.assertIsNone(self.driver.parse_r1_data(None))
 
     def test_convert_data(self):
         """Test the conversion of parsed r1 data."""
@@ -127,11 +146,8 @@ km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Deg
         self.assertDictEqual(self.driver.convert_data(self.parsed_r1_data),
                              self.converted_r1_data)
 
-        # test a corrupted response
-        pass
-
         # test a None response
-        self.assertEqual(self.driver.convert_data(None), None)
+        self.assertIsNone(self.driver.convert_data(None))
 
     def test_map_data(self):
         """Test the mapping of converted r1 data."""
@@ -140,22 +156,29 @@ km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Deg
         self.assertDictEqual(self.driver.map_data(self.converted_r1_data),
                              self.mapped_r1_data)
 
-        # test a corrupted response
-        pass
-
         # test a None response
-        self.assertEqual(self.driver.map_data(None), None)
+        self.assertIsNone(self.driver.map_data(None))
 
 
-#    def test_get_weewx_field(self):
-#        """Test getting the WeeWX field name given the Environdata field name."""
-#
-#        # test
-#        self.assertEqual(self.driver.get_w_field(['AT', '+000014.30', 'DegC']),
-#                         'outTemp')
+    def test_get_r1_environdata_field(self):
+        """Test getting an Environdata field name given an r1 field name."""
+
+        for e_field, value in six.iteritems(self.driver.r1_map):
+            r1_field = value.get('field')
+            # test that we have a non-None r1 field
+            self.assertIsNotNone(r1_field)
+            # get an appropriate element parameter to pass to get_r1_e_field()
+            if e_field == 'instantaneous_wind_speed':
+                element = (r1_field, '123', 'km/h')
+            elif e_field == 'instantaneous_wind_direction':
+                element = (r1_field, '123', 'Degs')
+            else:
+                element = (r1_field, '123', 'units')
+            # test get_r1_e_field()
+            self.assertEqual(self.driver.get_r1_e_field(element), e_field)
 
 
-class ConversionTestCase(unittest.TestCase):
+class UtilityTestCase(unittest.TestCase):
     """Test the various driver unit conversion methods."""
 
     stn_dict = {'ip_address': '192.168.254.254',
@@ -163,19 +186,57 @@ class ConversionTestCase(unittest.TestCase):
                 'poll_interval': 20
                 }
 
+    class FakeOpts(object):
+        """Fake Opts class for use where OptionParser opts are required."""
+
+        def __init__(self):
+            self.faker = None
+            self.ip_address = None
+            self.port = None
+
     def setUp(self):
 
         # get an Environdata driver object
         self.driver = user.environdata.EnvirondataDriver(**self.stn_dict)
+        self.opts = UtilityTestCase.FakeOpts()
 
     def tearDown(self):
 
         pass
 
-    def test_conversion_methods(self):
-        """Test unit conversion methods."""
+    def test_ip_from_config_opts(self):
+        """Test obtaining an IP address from OptionsParser opts or Station dict."""
 
-        pass
+        # test obtaining IP address from opts
+        self.opts.ip_address = '1.2.3.4'
+        self.assertEqual(user.environdata.ip_from_config_opts(self.opts, self.stn_dict),
+                         '1.2.3.4')
+        # test obtaining IP address from stn_dict
+        self.opts.ip_address = None
+        self.assertEqual(user.environdata.ip_from_config_opts(self.opts, self.stn_dict),
+                         '192.168.254.254')
+        # test being unable to obtain IP address from opts or stn_dict
+        self.assertIsNone(user.environdata.ip_from_config_opts(self.opts, {'a': 1}))
+
+    def test_port_from_config_opts(self):
+        """Test obtaining an IP address from OptionsParser opts or Station dict."""
+
+        # test obtaining IP address from opts
+        self.opts.port = 1234
+        self.assertEqual(user.environdata.port_from_config_opts(self.opts, self.stn_dict),
+                         1234)
+        # test obtaining IP address from stn_dict
+        self.opts.port = None
+        self.assertEqual(user.environdata.port_from_config_opts(self.opts, self.stn_dict),
+                         10001)
+        # test being unable to obtain port from opts or stn_dict
+        self.assertEqual(user.environdata.port_from_config_opts(self.opts, {'a': 1}),
+                         user.environdata.DEFAULT_PORT)
+        # test no port in opts and an invalid port in stn_dict
+        stn_dict = dict(self.stn_dict)
+        stn_dict['port'] = 'a'
+        self.assertEqual(user.environdata.port_from_config_opts(self.opts, stn_dict),
+                         user.environdata.DEFAULT_PORT)
 
 
 def suite(test_cases):
@@ -199,7 +260,7 @@ def main():
     import argparse
 
     # test cases that are production ready
-    test_cases = (ParseTestCase, ConversionTestCase)
+    test_cases = (ParseTestCase, UtilityTestCase)
 
     usage = """python -m user.tests.test_environdata --help
            python -m user.tests.test_environdata --version
