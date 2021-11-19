@@ -111,6 +111,160 @@ start the WeeWX daemon:
     or
 
     $ sudo systemctl start weewx
+
+Driver Development
+
+The Environdata driver was developed using an Environdata Weather Mate 3000
+station with sensors that measured the following:
+
+1. air temperature
+2. relative humidity
+3. barometric pressure
+4. wind speed
+5. wind direction
+
+The station also provided the following status status data:
+
+1. battery voltage
+2. load current
+3. charge current
+4. solar voltage
+
+No station manual was available, rather the driver operation was developed
+based on user knowledge that the station could be interrogated via telnet using
+the station IP address and port 10001. The following commands were found to
+return the respective responses:
+
+Command:
+> r
+
+Response:
+2021/11/05 11:14:14    Title "John"
+Sensor Name                       Model   Value      Unit
+  1    "Wind Speed              " (WS45): +000000.00 km/h
+  2    "Wind Direction          " (WD42): +000285.84 Degs
+  3    "Relative Humidity       " (RH40): +000066.00 %
+  4    "Air Temperature         " (TA10): +000020.17 DegC
+  5    "Barometric Pressure     " (BP41): +001019.67 hPa
+  21   "Battery Voltage         " (BTVL): +000012.33 V
+  22   "Load Current            " (LMA ): +000043.00 mA
+  23   "Solar Voltage           " (SPVL): +000012.94 V
+  24   "Charge Current          " (CMA ): +000259.87 mA
+  25   "Peak Wind Gust          " (PWG ): +000000.00 km/h
+  26   "Inst. Wind Speed        " (IWS ): +000000.00 km/h
+  27   "Inst. Wind Direction    " (    ): +000286.65 Degs
+  30   "Rain Since 9am          " (    ): +000000.00 mm
+  31   "Communications          " (    ): +000001.00 Mins
+
+Command:
+> r1
+
+Response:
+r1
+WS=   ,WD=   ,RH=   ,AT=   ,BP=   ,BV=   ,LC=   ,SV=   ,CC=   ,PW=   ,IW=   ,IW=   ,RS=   ,Co=
++000005.15,+000112.24,+000060.67,+000022.80,+001015.22,+000012.47,+000042.55,+000013.02,+000203.09,+000007.00,+000005.00,+000133.33,+000000.00,+000001.00
+km/h  ,Degs  ,%     ,DegC  ,hPa   ,V     ,mA    ,V     ,mA    ,km/h  ,km/h  ,Degs  ,mm    ,Mins
+
+Command:
+> r2
+
+Response:
+r2
+2021/11/05,14:20:36,+000001.60,+000112.81,+000058.67,+000024.83,+001016.33,+0000r12.87,+000041.20,+000013.60,+000543.76,+000004.00,+000002.00,+000078.61,+000000.00,+000001.00
+;0911-0125,Wind S,Wind D,Rela H3,Air  T,Baro P,Batt V,Load C,Sola V,Char C,Peak W,Inst W,Inst W,Rain S,Commun
+;Title "John"
+;Location "Riverside"
+
+Command:
+> r3
+
+Response:
+r3
+2021/11/05,14:20:37,1.60,112.81,58.67,24.83,1016.33,12.87,41.20,13.60,543.76,4.r00,2.00,78.61,0.00,1.00
+
+Command:
+> raw
+
+Response:
+raw
+D1:N/A, D2:N/A, D3:952, D4:1345,  D5:1155, D6:N/A, D7:N/A, D8:N/A,  D9:N/A, D10:N/A, D11:N/A, D12:N/A,  D13:N/A, D14:N/A, D15:N/A, D16:N/A,
+A1:N/A, A2:N/A, A3:N/A, A4:N/A,
+W1:666, W2:1372, W3:533, W4:1969,  W5:32000, W6:1333, W7:-352, W8:837,  W9:-186, W10:452,
+S1:0, S2:1, S3:952, S4:1345,  S5:1155, S21:646, S22:184, S23:504,  S24:249, S25:1, S26:0, S27:1,  S30:0, S31:1,
+
+Command:
+> ver
+
+Response:
+1.93 2014/10/29 Program
+1 Command set
+1.20a MK4IO
+J HWVER
+
+
+Command:
+> hwver
+
+Reponse:
+J HWVER
+
+Command:
+> mem
+
+Response:
+mem
+;Environdata DL3000 V1.93 2014/10/29 0911-0125
+;Title "John"
+;Location "Riverside"
+;Memory 1 "Daily Summary"
+;2021/11/12 13:56:08
+#01 MAXIMUM      01 Wind Speed              km/h
+#02 AVERAGE      01 Wind Speed              km/h
+#03 AVERAGE      02 Wind Direction          Degs
+#04 MAXIMUM      25 Peak Wind Gust          km/h
+#05 MAXIMUM      03 Relative Humidity       %
+#06 MINIMUM      03 Relative Humidity       %
+#07 AVERAGE      03 Relative Humidity       %
+#08 MAXIMUM      04 Air Temperature         DegC
+#09 MINIMUM      04 Air Temperature         DegC
+#10 AVERAGE      04 Air Temperature         DegC
+#11 MAXIMUM      05 Barometric Pressure     hPa
+#12 MINIMUM      05 Barometric Pressure     hPa
+#13 AVERAGE      05 Barometric Pressure     hPa
+#14 MINIMUM      21 Battery Voltage         V
+#15 AVERAGE      23 Solar Voltage           V
+#16 AVERAGE      22 Load Current            mA
+#17 AVERAGE      24 Charge Current          mA
+
+Commands r1, r2 and r3 all provided similar sensor data albeit in a different
+text format and with varying unit and sensor name metadata. The r1 command
+was chosen as the basis for obtaining loop data based on the inclusion of
+sensor value and sensor name and units for each field. Commands r2 and in
+particular r3 would have provided data that was easier to parse. However,
+they were considered unusable without any knowledge of the station operation,
+in particular the sensor order in the r1, r2 and r3 command responses and the
+units in the r2 and r3 command responses.
+
+Assumptions
+
+The following assumptions were made in developing the driver:
+
+1. the station is contactable via telnet on port 10001, although the actual
+   port can be specified in the driver configuration stanza in weewx.conf
+2. the station emits sensor values in units indicated in the sample r1 command
+   response
+
+Future Development
+
+Future development may include:
+
+1. use of the ver command was used to obtain station metadata
+2. implementation of decode routines for obtaining loop data from the r2 and r3
+   command responses
+3. implementation of a user defined field map to allow the user to specify
+   which sensor values are mapped to which WeeWX field
+4. adding support for sesnor data in other than Metric units (it is unknown
+   what capabilities the station has in this regard)
 """
 
 import configobj
@@ -440,7 +594,7 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                          'rain_9am': 'rain_since_9am',
                          'communications': 'communications'
                          }
-    # Environdata tenet prompt
+    # Environdata telnet prompt
     prompt = b'>'
     # code to use to terminate an Environdata telnet command
     cmd_terminator = '\r'
