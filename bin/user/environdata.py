@@ -18,21 +18,22 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see https://www.gnu.org/licenses/.
 
-Version: 0.1.0a4                                    Date: ? November 2021
+Version: 0.1.0                                      Date: 10 November 2021
 
 Revision History
-    ? November 2021         v0.1.0
+    10 November 2021        v0.1.0
         -   initial release
 
 To use this driver:
 
-1.  If installing on a fresh WeeWX installation install WeeWX and configure it
-to use the 'simulator'. Refer to https://weewx.com/docs/usersguide.htm#installing
+1.  If installing on a fresh WeeWX installation first install WeeWX and
+configure WeeWX to use the 'simulator'.
+Refer to https://weewx.com/docs/usersguide.htm#installing
 
-2.  put this file in $BIN_ROOT/user ( for setup.py installs this
-is /home/weewx/bin/user, for package installs this is /usr/share/weewx/user)
+2.  Put this file in BIN_ROOT/user. For setup.py installs this is
+/home/weewx/bin/user, for package installs this is /usr/share/weewx/user.
 
-3.  add the following stanza to weewx.conf replacing w.x.y.z with the IP
+3.  Add the following stanza to weewx.conf replacing w.x.y.z with the IP
 address of the station:
 
     [Environdata]
@@ -187,7 +188,7 @@ except ImportError:
         log_traceback(prefix=prefix, loglevel=syslog.LOG_DEBUG)
 
 DRIVER_NAME = 'Environdata'
-DRIVER_VERSION = '0.1.0a4'
+DRIVER_VERSION = '0.1.0'
 
 DEFAULT_PORT = 10001
 DEFAULT_POLL_INTERVAL = 20
@@ -343,8 +344,14 @@ attempt startup indefinitely."""
 class EnvirondataDriver(weewx.drivers.AbstractDevice):
     """Driver for the Environdata Weather Mate 3000."""
 
+    # dict to map parser functions to an Environdata packet type
     parser_map = {'r1': 'parse_r1_data'}
-
+    # dict to map various r1 packet properties/functions to a common
+    # Environdata field name:
+    #   field: field code used in the r1 packet
+    #   group: WeeWX unit group to be used for this field
+    #   unit:  WeeWX unit to be used for this field
+    #   conv_fn: function to use to convert the r1 data to the field unit
     r1_map = {
         'wind_speed': {'field': 'WS',
                        'group': 'group_speed',
@@ -417,6 +424,7 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                            'conv_fn': lambda x: x
                            }
     }
+    # default field map to map common Environdata fields to WeeWX fields
     default_field_map = {'avg_wind_speed': 'wind_speed',
                          'avg_wind_direction': 'wind_direction',
                          'outHumidity': 'relative_humidity',
@@ -432,8 +440,9 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
                          'rain_9am': 'rain_since_9am',
                          'communications': 'communications'
                          }
-
+    # Environdata tenet prompt
     prompt = b'>'
+    # code to use to terminate an Environdata telnet command
     cmd_terminator = '\r'
 
     def __init__(self, **stn_dict):
