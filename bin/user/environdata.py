@@ -694,15 +694,19 @@ class EnvirondataDriver(weewx.drivers.AbstractDevice):
             time.sleep(self.poll_interval)
 
     def read_data(self):
-        """Read raw data from the station"""
+        """Read raw data from the station."""
 
-        with telnetlib.Telnet(self.ip_address, self.port) as tn:
-            tn.read_until(EnvirondataDriver.prompt, timeout=5)
-            # ask for r1 data
-            tn.write(six.ensure_binary(''.join([self.packet_type,
-                                                EnvirondataDriver.cmd_terminator])))
-            # read the response
-            raw_data = tn.read_until(EnvirondataDriver.prompt, timeout=10).decode('ascii')
+        # open a telnet session
+        tn = telnetlib.Telnet(self.ip_address, self.port)
+        # read until we get a prompt
+        tn.read_until(EnvirondataDriver.prompt, timeout=5)
+        # ask for r1 data
+        tn.write(six.ensure_binary(''.join([self.packet_type,
+                                            EnvirondataDriver.cmd_terminator])))
+        # read the response
+        raw_data = tn.read_until(EnvirondataDriver.prompt, timeout=10).decode('ascii')
+        # close our telnet session
+        tn.close()
         # return the raw data
         return raw_data
 
