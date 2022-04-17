@@ -18,7 +18,7 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see https://www.gnu.org/licenses/.
 
-Version: 0.1.0                                      Date: 10 November 2021
+Version: 0.1.0a1                                    Date: 10 November 2021
 
 Revision History
     10 November 2021        v0.1.0
@@ -342,7 +342,7 @@ except ImportError:
         log_traceback(prefix=prefix, loglevel=syslog.LOG_DEBUG)
 
 DRIVER_NAME = 'Environdata'
-DRIVER_VERSION = '0.1.0'
+DRIVER_VERSION = '0.1.0a1'
 
 DEFAULT_PORT = 10001
 DEFAULT_POLL_INTERVAL = 20
